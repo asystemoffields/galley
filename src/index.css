@@ -1,0 +1,29 @@
+:root {
+  --paper: #faf6ee;
+  --ink: #2c2a26;
+  --soft-ink: #6e6a61;
+  --card: #fffdf8;
+  --line: #e6dfd2;
+  --accent: #2e6e62;
+  --accent-dark: #245449;
+  --warn-bg: #fbeee9;
+  --warn-ink: #8a4630;
+  font-size: 17px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
