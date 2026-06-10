@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import './App.css';
 import type { Book } from './core';
 import { blockText, manuscriptWordCount, wordCount } from './core';
@@ -217,26 +217,32 @@ function BookScreen({ book, onChange }: { book: Book; onChange: (b: Book) => voi
         <h2>Chapters we found</h2>
         <ol className="chapter-list">
           {book.chapters.map((c, i) => (
-            <li key={i}>
-              <span className="chapter-title">{c.title || `Chapter ${i + 1}`}</span>
-              <span className="chapter-words">
-                {c.blocks
-                  .reduce(
-                    (n, b) =>
-                      n + (blockText(b).trim() ? blockText(b).trim().split(/\s+/).length : 0),
-                    0,
-                  )
-                  .toLocaleString()}{' '}
-                words
-              </span>
-            </li>
+            <Fragment key={i}>
+              {c.part && c.part !== book.chapters[i - 1]?.part && (
+                <li className="part-row">{c.part}</li>
+              )}
+              <li>
+                <span className="chapter-title">{c.title || `Chapter ${i + 1}`}</span>
+                <span className="chapter-words">
+                  {c.blocks
+                    .reduce(
+                      (n, b) =>
+                        n + (blockText(b).trim() ? blockText(b).trim().split(/\s+/).length : 0),
+                      0,
+                    )
+                    .toLocaleString()}{' '}
+                  words
+                </span>
+              </li>
+            </Fragment>
           ))}
         </ol>
         <p className="soft">
           Not what you expected? Galley splits chapters on headings (like{' '}
-          <code># Chapter One</code> in Markdown, or Heading 1 in Word). Adjust
-          your file and drop it in again — nothing here is saved, so you can't
-          break anything.
+          <code># Chapter One</code> in Markdown, or Heading 1 in Word). A book
+          in parts works too: part titles one heading level up (<code># Part</code>,{' '}
+          <code>## Chapter</code>). Adjust your file and drop it in again —
+          nothing here is saved, so you can't break anything.
         </p>
       </section>
 

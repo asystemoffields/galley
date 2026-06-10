@@ -85,6 +85,60 @@ describe('parseMarkdown', () => {
     ]);
   });
 
+  it('reads two heading levels as named parts containing chapters', () => {
+    const book = parseMarkdown([
+      {
+        name: 'b.md',
+        content: [
+          '# The Whisper Wood',
+          '',
+          '## Chapter One',
+          '',
+          'Text one.',
+          '',
+          '## Chapter Two',
+          '',
+          'Text two.',
+          '',
+          '# The Salt Marsh',
+          '',
+          '## Chapter Three',
+          '',
+          'Text three.',
+        ].join('\n'),
+      },
+    ]);
+    expect(book.chapters.map((c) => ({ part: c.part, title: c.title }))).toEqual([
+      { part: 'The Whisper Wood', title: 'Chapter One' },
+      { part: 'The Whisper Wood', title: 'Chapter Two' },
+      { part: 'The Salt Marsh', title: 'Chapter Three' },
+    ]);
+  });
+
+  it('does not mistake occasional in-chapter subheads for parts', () => {
+    const book = parseMarkdown([
+      {
+        name: 'b.md',
+        content: '# One\n\nText.\n\n# Two\n\n## A subhead\n\nMore text.\n',
+      },
+    ]);
+    expect(book.chapters.map((c) => c.title)).toEqual(['One', 'Two']);
+    expect(book.chapters.every((c) => c.part === undefined)).toBe(true);
+  });
+
+  it('reads a multi-chapter file under one top heading as a named part', () => {
+    const book = parseMarkdown([
+      { name: '1-first.md', content: '# Dawn\n\n## Chapter One\n\nA.\n\n## Chapter Two\n\nB.\n' },
+      { name: '2-second.md', content: '# Dusk\n\n## Chapter Three\n\nC.\n\n## Chapter Four\n\nD.\n' },
+    ]);
+    expect(book.chapters.map((c) => ({ part: c.part, title: c.title }))).toEqual([
+      { part: 'Dawn', title: 'Chapter One' },
+      { part: 'Dawn', title: 'Chapter Two' },
+      { part: 'Dusk', title: 'Chapter Three' },
+      { part: 'Dusk', title: 'Chapter Four' },
+    ]);
+  });
+
   it('treats multiple files as chapters sorted naturally', () => {
     const book = parseMarkdown([
       { name: '10-the-end.md', content: 'Last words.' },
@@ -136,6 +190,58 @@ describe('emitDocx', () => {
         .map((f) => zip.file(f)!.async('string')),
     );
     expect(header.join('')).toContain('Penwright / THE SALT ROAD / ');
+  });
+});
+
+const PART_MD = `---
+title: The Crossing
+author: A
+---
+
+# The Whisper Wood
+
+## Chapter One
+
+Text one.
+
+## Chapter Two
+
+Text two.
+
+# The Salt Marsh
+
+## Chapter Three
+
+Text three.
+`;
+
+describe('parts in outputs', () => {
+  it('gives each part its own page in the manuscript', async () => {
+    const book = parseMarkdown([{ name: 'b.md', content: PART_MD }]);
+    const buffer = await Packer.toBuffer(emitDocx(book));
+    const zip = await JSZip.loadAsync(buffer);
+    const doc = await zip.file('word/document.xml')!.async('string');
+    expect(doc).toContain('The Whisper Wood');
+    expect(doc).toContain('The Salt Marsh');
+    expect(doc).toContain('Chapter Three');
+  });
+
+  it('gives each part a page and a nested TOC entry in the EPUB', async () => {
+    const book = parseMarkdown([{ name: 'b.md', content: PART_MD }]);
+    const zip = emitEpub(book, { modified: '2026-06-10T00:00:00Z' });
+    expect(zip.file('OEBPS/text/part-001.xhtml')).toBeTruthy();
+    expect(zip.file('OEBPS/text/part-002.xhtml')).toBeTruthy();
+
+    const nav = await zip.file('OEBPS/nav.xhtml')!.async('string');
+    expect(nav).toContain('The Whisper Wood');
+    expect(nav.indexOf('<ol>')).toBeLessThan(nav.indexOf('chapter-001'));
+
+    const opf = await zip.file('OEBPS/package.opf')!.async('string');
+    expect(opf).toContain('<itemref idref="part-001"/>');
+    expect(opf).toContain('<itemref idref="chapter-003"/>');
+
+    const ncxDoc = await zip.file('OEBPS/toc.ncx')!.async('string');
+    expect(ncxDoc).toContain('The Salt Marsh');
   });
 });
 

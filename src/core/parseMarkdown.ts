@@ -2,14 +2,9 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkFrontmatter from 'remark-frontmatter';
 import { parse as parseYaml } from 'yaml';
-import type {
-  Root,
-  RootContent,
-  PhrasingContent,
-  Paragraph,
-  Heading,
-} from 'mdast';
+import type { Root, RootContent, PhrasingContent, Paragraph } from 'mdast';
 import type { Block, Book, BookMetadata, Chapter, Run } from './model';
+import { outlineToChapters, type OutlineItem } from './chapterize';
 
 const processor = unified().use(remarkParse).use(remarkFrontmatter, ['yaml']);
 
@@ -34,10 +29,10 @@ export function parseMarkdown(files: NamedFile[]): Book {
   if (files.length === 1) {
     const tree = processor.parse(neutralizeTildeFences(files[0].content)) as Root;
     collectFrontmatter(tree, metadata);
-    const nodes = [...tree.children];
-    const docTitle = takeDocumentTitle(nodes);
-    if (docTitle !== null) metadata.title ??= docTitle;
-    const chapters = splitIntoChapters(nodes);
+    const { title, chapters } = outlineToChapters(nodesToOutline(tree.children), {
+      detectTitle: true,
+    });
+    if (title) metadata.title ??= title;
     return finishBook(metadata, chapters, files[0].name);
   }
 
@@ -48,7 +43,20 @@ export function parseMarkdown(files: NamedFile[]): Book {
   for (const file of sorted) {
     const tree = processor.parse(neutralizeTildeFences(file.content)) as Root;
     collectFrontmatter(tree, metadata);
-    const fileChapters = splitIntoChapters(tree.children);
+    const items = nodesToOutline(tree.children);
+    const result = outlineToChapters(items, { detectTitle: true });
+    let fileChapters = result.chapters;
+    const fileTitle = result.title;
+    if (fileTitle) {
+      if (fileChapters.length > 1) {
+        // A lone top heading introducing several chapters: this file is a
+        // part, and that heading is its name.
+        for (const c of fileChapters) c.part ??= fileTitle;
+      } else {
+        // One chapter under a lone heading: the heading was its title.
+        fileChapters = outlineToChapters(items).chapters;
+      }
+    }
     if (fileChapters.length === 1 && !fileChapters[0].title) {
       fileChapters[0].title = titleFromFilename(file.name);
     }
@@ -86,28 +94,6 @@ function neutralizeTildeFences(content: string): string {
   return content.replace(/^[ \t]{0,3}~{3,}[ \t]*$/gm, '* * *');
 }
 
-/**
- * Writers often put the book title as a lone top-level heading above
- * deeper chapter headings (`# My Novel` then `## Chapter One`). If the
- * shallowest heading level occurs exactly once, opens the document, and
- * deeper headings exist, treat it as the title — not a chapter boundary
- * that would swallow the whole book into one chapter. Removes the heading
- * from `nodes` and returns its text, or null if the shape doesn't match.
- */
-function takeDocumentTitle(nodes: RootContent[]): string | null {
-  const headings = nodes.filter(
-    (n): n is Heading => n.type === 'heading' && phrasingToText(n.children) !== '',
-  );
-  if (headings.length < 2) return null;
-  const depths = headings.map((h) => h.depth);
-  const minDepth = Math.min(...depths);
-  if (depths.filter((d) => d === minDepth).length !== 1) return null;
-  const first = nodes.find((n) => n.type !== 'yaml');
-  if (first !== headings[0] || headings[0].depth !== minDepth) return null;
-  nodes.splice(nodes.indexOf(first), 1);
-  return phrasingToText(headings[0].children);
-}
-
 function titleFromFilename(name: string): string {
   return name
     .replace(/\.[^.]+$/, '')
@@ -138,39 +124,25 @@ function collectFrontmatter(tree: Root, into: Partial<BookMetadata>) {
   }
 }
 
-function splitIntoChapters(nodes: RootContent[]): Chapter[] {
-  // A bare "#" line is an empty heading in markdown, but to a writer it's
-  // a scene break — never treat empty headings as chapter boundaries.
-  const headingDepths = nodes
-    .filter((n): n is Heading => n.type === 'heading' && phrasingToText(n.children) !== '')
-    .map((h) => h.depth);
-  const splitDepth = headingDepths.length ? Math.min(...headingDepths) : null;
-
-  const chapters: Chapter[] = [];
-  let current: Chapter = { title: '', blocks: [] };
-
-  const flush = () => {
-    if (current.title || current.blocks.length) chapters.push(current);
-    current = { title: '', blocks: [] };
-  };
-
+function nodesToOutline(nodes: RootContent[]): OutlineItem[] {
+  const items: OutlineItem[] = [];
   for (const node of nodes) {
+    if (node.type === 'yaml') continue;
     if (node.type === 'heading') {
       const text = phrasingToText(node.children);
+      // A bare "#" line is an empty heading in markdown, but to a writer
+      // it's a scene break — never treat it as a structural heading.
       if (text === '') {
-        current.blocks.push({ kind: 'scene-break' });
-        continue;
+        items.push({ kind: 'blocks', blocks: [{ kind: 'scene-break' }] });
+      } else {
+        items.push({ kind: 'heading', depth: node.depth, text });
       }
-      if (node.depth === splitDepth) {
-        flush();
-        current.title = text;
-        continue;
-      }
+      continue;
     }
-    current.blocks.push(...nodeToBlocks(node));
+    const blocks = nodeToBlocks(node);
+    if (blocks.length) items.push({ kind: 'blocks', blocks });
   }
-  flush();
-  return chapters.length ? chapters : [{ title: '', blocks: [] }];
+  return items;
 }
 
 function nodeToBlocks(node: RootContent): Block[] {

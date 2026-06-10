@@ -31,9 +31,15 @@ Deploy `dist/` to any static host (GitHub Pages, Netlify, Cloudflare Pages).
 
 - **One Markdown file**: chapters split on the shallowest heading level
   (`# Chapter One`). YAML frontmatter (`title:`, `author:`, `email:` …)
-  prefills the book details.
+  prefills the book details. A lone top-level heading above deeper ones is
+  read as the book's title.
+- **Books in parts**: use two heading levels (`# Part Name`, then
+  `## Chapter One`) — part names don't need numbers or the word "Part".
+  Each part gets its own page in the manuscript and the ebook, and the
+  ebook's table of contents nests chapters under their part.
 - **Several Markdown files**: each file is a chapter, sorted naturally by
-  filename (`1-`, `2-`, … `10-` sorts correctly).
+  filename (`1-`, `2-`, … `10-` sorts correctly). A file holding several
+  chapters under one top heading is read as a named part.
 - **A Word document**: chapters split on Heading 1 (or, if the document has no
   heading styles, on standalone "Chapter …" lines).
 - Scene breaks: `***`, a lone `#`, `~`, or a thematic break, in any format.

@@ -36,7 +36,30 @@ export function emitEpub(book: Book, options: EpubOptions = {}): JSZip {
 
   zip.file('OEBPS/styles/style.css', STYLESHEET);
   zip.file('OEBPS/text/titlepage.xhtml', titlePageXhtml(title, author, language));
+
+  // Books with parts get a page per part title, ahead of its chapters;
+  // `docs` is every content document in reading order, `navTree` nests
+  // chapters under their part for the EPUB 3 nav.
+  const docs: ChapterEntry[] = [];
+  const navTree: NavEntry[] = [];
+  let currentPart: string | undefined;
+  let partCount = 0;
   for (const c of chapters) {
+    const part = c.chapter.part;
+    if (part !== currentPart) {
+      currentPart = part;
+      if (part) {
+        partCount += 1;
+        const entry = { id: `part-${String(partCount).padStart(3, '0')}`, title: part };
+        docs.push(entry);
+        navTree.push({ ...entry, children: [] });
+        zip.file(`OEBPS/text/${entry.id}.xhtml`, partXhtml(part, language));
+      }
+    }
+    docs.push({ id: c.id, title: c.title });
+    const group = navTree[navTree.length - 1];
+    if (part && group?.children) group.children.push({ id: c.id, title: c.title });
+    else navTree.push({ id: c.id, title: c.title });
     zip.file(`OEBPS/text/${c.id}.xhtml`, chapterXhtml(c.title, c.chapter, language));
   }
 
@@ -46,11 +69,11 @@ export function emitEpub(book: Book, options: EpubOptions = {}): JSZip {
     zip.file('OEBPS/text/cover.xhtml', coverXhtml(coverExt, language));
   }
 
-  zip.file('OEBPS/nav.xhtml', navXhtml(chapters, language, !!options.cover));
-  zip.file('OEBPS/toc.ncx', ncx(uuid, title, chapters));
+  zip.file('OEBPS/nav.xhtml', navXhtml(navTree, language, !!options.cover));
+  zip.file('OEBPS/toc.ncx', ncx(uuid, title, docs));
   zip.file(
     'OEBPS/package.opf',
-    packageOpf({ uuid, modified, language, title, author, chapters, cover: options.cover && coverExt }),
+    packageOpf({ uuid, modified, language, title, author, docs, cover: options.cover && coverExt }),
   );
   return zip;
 }
@@ -109,6 +132,14 @@ p.scene-break {
   text-align: center;
   margin-top: 30%;
 }
+.partpage {
+  text-align: center;
+  margin-top: 35%;
+}
+.partpage h1 {
+  font-weight: normal;
+  font-size: 1.8em;
+}
 .titlepage h1 {
   font-weight: normal;
   font-size: 2em;
@@ -160,6 +191,16 @@ function coverXhtml(ext: string, language: string): string {
   );
 }
 
+function partXhtml(title: string, language: string): string {
+  return xhtmlShell(
+    title,
+    `  <section class="partpage" epub:type="part">
+    <h1>${escapeXml(title)}</h1>
+  </section>`,
+    language,
+  );
+}
+
 function chapterXhtml(title: string, chapter: Chapter, language: string): string {
   const paragraphs: string[] = [];
   let firstAfterBreak = true;
@@ -200,12 +241,21 @@ interface ChapterEntry {
   title: string;
 }
 
-function navXhtml(chapters: ChapterEntry[], language: string, hasCover: boolean): string {
+interface NavEntry extends ChapterEntry {
+  children?: ChapterEntry[];
+}
+
+function navXhtml(entries: NavEntry[], language: string, hasCover: boolean): string {
+  const link = (e: ChapterEntry) => `<a href="text/${e.id}.xhtml">${escapeXml(e.title)}</a>`;
   const items = [
     ...(hasCover ? ['    <li><a href="text/cover.xhtml">Cover</a></li>'] : []),
     `    <li><a href="text/titlepage.xhtml">Title Page</a></li>`,
-    ...chapters.map(
-      (c) => `    <li><a href="text/${c.id}.xhtml">${escapeXml(c.title)}</a></li>`,
+    ...entries.map((e) =>
+      e.children?.length
+        ? `    <li>${link(e)}\n      <ol>\n${e.children
+            .map((c) => `        <li>${link(c)}</li>`)
+            .join('\n')}\n      </ol>\n    </li>`
+        : `    <li>${link(e)}</li>`,
     ),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -258,20 +308,20 @@ function packageOpf(args: {
   language: string;
   title: string;
   author: string;
-  chapters: ChapterEntry[];
+  docs: ChapterEntry[];
   cover?: string | false;
 }): string {
-  const { uuid, modified, language, title, author, chapters, cover } = args;
+  const { uuid, modified, language, title, author, docs, cover } = args;
   const coverManifest = cover
     ? `    <item id="cover-image" href="images/cover.${cover}" media-type="image/${cover === 'png' ? 'png' : 'jpeg'}" properties="cover-image"/>
     <item id="cover" href="text/cover.xhtml" media-type="application/xhtml+xml"/>\n`
     : '';
   const coverSpine = cover ? `    <itemref idref="cover" linear="yes"/>\n` : '';
   const coverMeta = cover ? `    <meta name="cover" content="cover-image"/>\n` : '';
-  const chapterManifest = chapters
+  const chapterManifest = docs
     .map((c) => `    <item id="${c.id}" href="text/${c.id}.xhtml" media-type="application/xhtml+xml"/>`)
     .join('\n');
-  const chapterSpine = chapters.map((c) => `    <itemref idref="${c.id}"/>`).join('\n');
+  const chapterSpine = docs.map((c) => `    <itemref idref="${c.id}"/>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="pub-id" xml:lang="${escapeXml(language)}">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">

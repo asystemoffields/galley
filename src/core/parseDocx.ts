@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
-import type { Block, Book, Chapter, Run } from './model';
+import type { Book, Chapter, Run } from './model';
+import { outlineToChapters, type OutlineItem } from './chapterize';
 
 const SCENE_BREAK_RE = /^\s*(?:#|\*\s*\*\s*\*|\* \* \*|~+|·+)\s*$/;
 
@@ -37,27 +38,36 @@ export async function parseDocx(buffer: ArrayBuffer, filename: string): Promise<
     isNode ? { buffer: Buffer.from(buffer) } : { arrayBuffer: buffer },
   );
   const paras = htmlToParas(result.value);
-  const chapters = chapterize(paras);
-  return {
-    metadata: {
-      title: filename.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim(),
-      author: '',
-    },
-    chapters,
-  };
+  const fallbackTitle = filename.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
+
+  if (paras.some((p) => p.heading !== null)) {
+    const { title, chapters } = outlineToChapters(parasToOutline(paras), {
+      detectTitle: true,
+    });
+    return { metadata: { title: title ?? fallbackTitle, author: '' }, chapters };
+  }
+  return { metadata: { title: fallbackTitle, author: '' }, chapters: chapterizeByLines(paras) };
 }
 
-function chapterize(paras: FlatPara[]): Chapter[] {
-  const headingDepths = paras
-    .filter((p) => p.heading !== null)
-    .map((p) => p.heading as number);
-  const splitDepth = headingDepths.length ? Math.min(...headingDepths) : null;
+function parasToOutline(paras: FlatPara[]): OutlineItem[] {
+  const items: OutlineItem[] = [];
+  for (const p of paras) {
+    const text = runText(p.runs);
+    if (SCENE_BREAK_RE.test(text)) {
+      items.push({ kind: 'blocks', blocks: [{ kind: 'scene-break' }] });
+    } else if (!text.trim()) {
+      continue;
+    } else if (p.heading !== null) {
+      items.push({ kind: 'heading', depth: p.heading, text: text.trim() });
+    } else {
+      items.push({ kind: 'blocks', blocks: [{ kind: 'paragraph', runs: p.runs }] });
+    }
+  }
+  return items;
+}
 
-  const isBoundary = (p: FlatPara): boolean => {
-    if (splitDepth !== null) return p.heading === splitDepth;
-    return isChapterLine(runText(p.runs));
-  };
-
+/** No heading styles anywhere: fall back to standalone chapter-like lines. */
+function chapterizeByLines(paras: FlatPara[]): Chapter[] {
   const chapters: Chapter[] = [];
   let current: Chapter = { title: '', blocks: [] };
   const flush = () => {
@@ -66,26 +76,18 @@ function chapterize(paras: FlatPara[]): Chapter[] {
   };
 
   for (const p of paras) {
-    if (isBoundary(p)) {
+    const text = runText(p.runs);
+    if (isChapterLine(text)) {
       flush();
-      current.title = runText(p.runs).trim();
-      continue;
+      current.title = text.trim();
+    } else if (SCENE_BREAK_RE.test(text)) {
+      current.blocks.push({ kind: 'scene-break' });
+    } else if (text.trim()) {
+      current.blocks.push({ kind: 'paragraph', runs: p.runs });
     }
-    const block = paraToBlock(p);
-    if (block) current.blocks.push(block);
   }
   flush();
   return chapters.length ? chapters : [{ title: '', blocks: [] }];
-}
-
-function paraToBlock(p: FlatPara): Block | null {
-  const text = runText(p.runs);
-  if (SCENE_BREAK_RE.test(text)) return { kind: 'scene-break' };
-  if (!text.trim()) return null;
-  if (p.heading !== null) {
-    return { kind: 'paragraph', runs: [{ text: text.trim(), bold: true }] };
-  }
-  return { kind: 'paragraph', runs: p.runs };
 }
 
 function runText(runs: Run[]): string {

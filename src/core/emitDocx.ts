@@ -53,7 +53,12 @@ export function emitDocx(book: Book, options: DocxOptions = {}): Document {
   ];
 
   const isNovel = book.chapters.length > 1;
+  let currentPart: string | undefined;
   book.chapters.forEach((chapter, index) => {
+    if (chapter.part && chapter.part !== currentPart) {
+      currentPart = chapter.part;
+      children.push(...partHeading(chapter.part));
+    }
     if (isNovel) {
       children.push(...chapterHeading(chapter.title || `Chapter ${index + 1}`));
     } else if (index === 0) {
@@ -208,6 +213,19 @@ function titleBlock(book: Book): Paragraph[] {
       alignment: AlignmentType.CENTER,
       indent: { firstLine: 0 },
       children: [new TextRun(`by ${meta.author || 'Anonymous'}`)],
+    }),
+  ];
+}
+
+/** A part title gets a page of its own, centered a third of the way down. */
+function partHeading(title: string): Paragraph[] {
+  return [
+    new Paragraph({ pageBreakBefore: true, children: [] }),
+    ...Array.from({ length: 8 }, () => blank()),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      indent: { firstLine: 0 },
+      children: [new TextRun(title)],
     }),
   ];
 }

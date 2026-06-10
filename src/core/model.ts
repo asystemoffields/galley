@@ -18,6 +18,12 @@ export type Block =
 export interface Chapter {
   /** Display title, e.g. "Chapter One" or "The Long Walk". May be empty for untitled. */
   title: string;
+  /**
+   * Title of the part/section this chapter belongs to, for books divided
+   * into named parts. Consecutive chapters sharing a part value are one
+   * part; emitters render a part page where the value changes.
+   */
+  part?: string;
   blocks: Block[];
 }
 
