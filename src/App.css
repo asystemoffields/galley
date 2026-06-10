@@ -81,7 +81,7 @@ h2 {
 .dropzone.dragging {
   border-color: var(--accent);
   transform: scale(1.015);
-  background: #f4faf8;
+  background: var(--drop-active);
 }
 
 .dropzone-art {
@@ -150,7 +150,7 @@ input:not([type]) {
   padding: 0.55rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--input-bg);
   color: var(--ink);
 }
 input:not([type]):focus,
@@ -233,7 +233,7 @@ input[type='text']:focus {
   margin-top: auto;
   font: inherit;
   font-size: 1.05rem;
-  background: var(--accent);
+  background: var(--button-bg);
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -242,7 +242,7 @@ input[type='text']:focus {
   transition: background 0.15s ease;
 }
 .download-button:hover {
-  background: var(--accent-dark);
+  background: var(--button-hover);
 }
 
 .cover-thumb {
@@ -255,7 +255,8 @@ input[type='text']:focus {
 /* ---- previews ---- */
 
 .preview {
-  background: #fff;
+  background: var(--page);
+  color: var(--page-ink);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 1rem 1.25rem;
@@ -319,7 +320,7 @@ input[type='text']:focus {
 
 code {
   font-size: 0.9em;
-  background: #f1ece1;
+  background: var(--code-bg);
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }

@@ -6,9 +6,39 @@
   --line: #e6dfd2;
   --accent: #2e6e62;
   --accent-dark: #245449;
+  --button-bg: #2e6e62;
+  --button-hover: #245449;
+  --input-bg: #ffffff;
+  --code-bg: #f1ece1;
+  --drop-active: #f4faf8;
   --warn-bg: #fbeee9;
   --warn-ink: #8a4630;
+  /* Previews stay paper-colored in both themes: they depict a printed page. */
+  --page: #ffffff;
+  --page-ink: #2c2a26;
+  color-scheme: light;
   font-size: 17px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1e1c19;
+    --ink: #e9e3d8;
+    --soft-ink: #a8a193;
+    --card: #262320;
+    --line: #403b34;
+    --accent: #6db5a4;
+    --accent-dark: #8ccab9;
+    --button-bg: #2e6e62;
+    --button-hover: #3a8a7a;
+    --input-bg: #1a1815;
+    --code-bg: #36322b;
+    --drop-active: #252b28;
+    --warn-bg: #3a2620;
+    --warn-ink: #e8a285;
+    --page: #f5f1e8;
+    color-scheme: dark;
+  }
 }
 
 * {

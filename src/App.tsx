@@ -122,8 +122,8 @@ function WelcomeScreen({
       </div>
       {error && <p className="error">{error}</p>}
       <p className="privacy">
-        🔒 Everything happens right here on your device. Your manuscript is
-        never uploaded anywhere — promise.
+        Everything happens right here on your device. Your manuscript is never
+        uploaded anywhere.
       </p>
     </main>
   );
