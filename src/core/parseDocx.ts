@@ -1,8 +1,7 @@
 import mammoth from 'mammoth';
-import type { Book, Chapter, Run } from './model';
+import { SCENE_BREAK_RE, type Book, type Chapter, type Run } from './model';
 import { outlineToChapters, type OutlineItem } from './chapterize';
-
-const SCENE_BREAK_RE = /^\s*(?:#|\*\s*\*\s*\*|\* \* \*|~+|·+)\s*$/;
+import { depthForPromotion } from './detectCentered';
 
 const NUM_WORD =
   'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred';
@@ -25,19 +24,72 @@ export function isChapterLine(text: string): boolean {
   return t.length <= 48 && CHAPTER_LINE_RE.test(t);
 }
 
-interface FlatPara {
+export interface FlatPara {
   heading: number | null; // 1–6 for headings, null for body text
+  /** Center-aligned in Word (the alignment button, not whitespace). */
+  centered?: boolean;
   runs: Run[];
 }
 
+/**
+ * Mammoth drops paragraph alignment by default. Tag center-aligned
+ * paragraphs with a synthetic style so it survives into the HTML as a
+ * class — unless the paragraph already has a real style (a heading,
+ * say), which must win.
+ */
+const CENTERED_CLASS = 'galley-centered';
+
+interface MammothElement {
+  type?: string;
+  styleId?: string;
+  styleName?: string;
+  alignment?: string;
+  children?: MammothElement[];
+}
+
+function markCenteredParagraphs(element: MammothElement): MammothElement {
+  if (element.children) {
+    element = { ...element, children: element.children.map(markCenteredParagraphs) };
+  }
+  if (element.type === 'paragraph' && element.alignment === 'center' && !element.styleId) {
+    return { ...element, styleName: CENTERED_CLASS };
+  }
+  return element;
+}
+
+const mammothOptions = {
+  transformDocument: markCenteredParagraphs,
+  styleMap: [`p[style-name='${CENTERED_CLASS}'] => p.${CENTERED_CLASS}:fresh`],
+};
+
 /** Parse a .docx file (as an ArrayBuffer) into a Book. */
 export async function parseDocx(buffer: ArrayBuffer, filename: string): Promise<Book> {
+  return parasToBook(await docxToParas(buffer), filename);
+}
+
+/** First half of parseDocx: flatten the file into paragraphs. */
+export async function docxToParas(buffer: ArrayBuffer): Promise<FlatPara[]> {
   // Node's mammoth build reads {buffer}; the browser build reads {arrayBuffer}.
   const isNode = typeof process !== 'undefined' && !!process.versions?.node;
   const result = await mammoth.convertToHtml(
     isNode ? { buffer: Buffer.from(buffer) } : { arrayBuffer: buffer },
+    mammothOptions,
   );
-  const paras = htmlToParas(result.value);
+  return htmlToParas(result.value);
+}
+
+/**
+ * Second half of parseDocx: paragraphs into a Book. `decisions` carries
+ * the writer's answers about hand-centered lines, by paragraph index:
+ * true promotes the paragraph to a chapter heading, false keeps it as
+ * prose with the centering whitespace stripped.
+ */
+export function parasToBook(
+  paras: FlatPara[],
+  filename: string,
+  decisions?: ReadonlyMap<number, boolean>,
+): Book {
+  if (decisions?.size) paras = applyCenteredDecisions(paras, decisions);
   const fallbackTitle = filename.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
 
   if (paras.some((p) => p.heading !== null)) {
@@ -47,6 +99,36 @@ export async function parseDocx(buffer: ArrayBuffer, filename: string): Promise<
     return { metadata: { title: title ?? fallbackTitle, author: '' }, chapters };
   }
   return { metadata: { title: fallbackTitle, author: '' }, chapters: chapterizeByLines(paras) };
+}
+
+function applyCenteredDecisions(
+  paras: FlatPara[],
+  decisions: ReadonlyMap<number, boolean>,
+): FlatPara[] {
+  const depth = depthForPromotion(
+    paras.filter((p) => p.heading !== null).map((p) => p.heading!),
+    paras[0]?.heading !== null && paras[0]?.heading !== undefined,
+  );
+  return paras.map((p, i) => {
+    const isTitle = decisions.get(i);
+    if (isTitle === undefined || p.heading !== null) return p;
+    if (isTitle) return { heading: depth, runs: [{ text: runText(p.runs).trim() }] };
+    return { ...p, runs: trimEdges(p.runs) };
+  });
+}
+
+/** Strip the hand-centering whitespace off a declined candidate. */
+function trimEdges(runs: Run[]): Run[] {
+  const out = runs.map((r) => ({ ...r }));
+  for (const r of out) {
+    r.text = r.text.replace(/^[\t ]+/, '');
+    if (r.text) break;
+  }
+  for (let i = out.length - 1; i >= 0; i--) {
+    out[i].text = out[i].text.replace(/[\t ]+$/, '');
+    if (out[i].text) break;
+  }
+  return out.filter((r) => r.text !== '');
 }
 
 function parasToOutline(paras: FlatPara[]): OutlineItem[] {
@@ -126,7 +208,10 @@ export function htmlToParas(html: string): FlatPara[] {
         if (!closing) current = { heading: Number(h[1]), runs: [] };
       } else if (tag === 'p' || tag === 'li') {
         current = finish(current);
-        if (!closing) current = { heading: null, runs: [] };
+        if (!closing) {
+          const centered = new RegExp(`class="[^"]*\\b${CENTERED_CLASS}\\b`).test(token);
+          current = centered ? { heading: null, centered, runs: [] } : { heading: null, runs: [] };
+        }
       } else if (tag === 'em' || tag === 'i') {
         italic = Math.max(0, italic + (closing ? -1 : 1));
       } else if (tag === 'strong' || tag === 'b') {

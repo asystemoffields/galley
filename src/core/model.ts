@@ -47,6 +47,9 @@ export interface Book {
   chapters: Chapter[];
 }
 
+/** Paragraphs that are really scene-break markers writers type by hand. */
+export const SCENE_BREAK_RE = /^\s*(?:#|\*\s*\*\s*\*|\* \* \*|~+|·+)\s*$/;
+
 /** Plain text of a block, for word counts and previews. */
 export function blockText(block: Block): string {
   if (block.kind !== 'paragraph') return '';

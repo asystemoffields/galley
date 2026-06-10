@@ -2,13 +2,18 @@ import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import './App.css';
 import type { Book } from './core';
 import { blockText, manuscriptWordCount, wordCount } from './core';
-import { ingestFiles, IngestError } from './lib/ingest';
+import { ingestFiles, IngestError, type TitleCandidate } from './lib/ingest';
 import { downloadEpub, downloadManuscript } from './lib/download';
 
 type Cover = { data: ArrayBuffer; mime: 'image/jpeg' | 'image/png'; previewUrl: string };
+type Review = { files: File[]; candidates: TitleCandidate[] };
+
+const READ_FAILURE =
+  "Something went sideways while reading that file — and it's our fault, not yours. If it keeps happening, try exporting your book as .docx and dropping that in instead.";
 
 export default function App() {
   const [book, setBook] = useState<Book | null>(null);
+  const [review, setReview] = useState<Review | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -16,30 +21,56 @@ export default function App() {
     setError(null);
     setBusy(true);
     try {
-      setBook(await ingestFiles(files));
+      const { book, candidates } = await ingestFiles(files);
+      if (candidates.length > 0) {
+        setReview({ files, candidates });
+      } else {
+        setBook(book);
+      }
     } catch (e) {
-      setError(
-        e instanceof IngestError
-          ? e.message
-          : "Something went sideways while reading that file — and it's our fault, not yours. If it keeps happening, try exporting your book as .docx and dropping that in instead.",
-      );
+      setError(e instanceof IngestError ? e.message : READ_FAILURE);
     } finally {
       setBusy(false);
     }
+  }, []);
+
+  const finishReview = useCallback(
+    async (decisions: ReadonlyMap<string, boolean>) => {
+      if (!review) return;
+      setBusy(true);
+      try {
+        setBook((await ingestFiles(review.files, decisions)).book);
+        setReview(null);
+      } catch (e) {
+        setError(e instanceof IngestError ? e.message : READ_FAILURE);
+        setReview(null);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [review],
+  );
+
+  const startOver = useCallback(() => {
+    setBook(null);
+    setReview(null);
+    setError(null);
   }, []);
 
   return (
     <div className="app">
       <header className="masthead">
         <span className="wordmark">Galley</span>
-        {book && (
-          <button className="link-button" onClick={() => setBook(null)}>
+        {(book || review) && (
+          <button className="link-button" onClick={startOver}>
             ← Start over with a different file
           </button>
         )}
       </header>
       {book ? (
         <BookScreen book={book} onChange={setBook} />
+      ) : review ? (
+        <TitleReviewScreen candidates={review.candidates} onDone={finishReview} busy={busy} />
       ) : (
         <WelcomeScreen onFiles={handleFiles} error={error} busy={busy} />
       )}
@@ -124,6 +155,98 @@ function WelcomeScreen({
       <p className="privacy">
         Everything happens right here on your device. Your manuscript is never
         uploaded anywhere.
+      </p>
+    </main>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function TitleReviewScreen({
+  candidates,
+  onDone,
+  busy,
+}: {
+  candidates: TitleCandidate[];
+  onDone: (decisions: ReadonlyMap<string, boolean>) => void;
+  busy: boolean;
+}) {
+  const [index, setIndex] = useState(0);
+  const decisions = useRef(new Map<string, boolean>());
+  const current = candidates[index];
+  const remaining = candidates.length - index;
+
+  const answer = (isTitle: boolean) => {
+    decisions.current.set(current.id, isTitle);
+    if (index + 1 < candidates.length) {
+      setIndex(index + 1);
+    } else {
+      onDone(new Map(decisions.current));
+    }
+  };
+
+  const answerRest = (isTitle: boolean) => {
+    for (let i = index; i < candidates.length; i++) {
+      decisions.current.set(candidates[i].id, isTitle);
+    }
+    onDone(new Map(decisions.current));
+  };
+
+  return (
+    <main className="review">
+      <h1>Quick question about your chapters</h1>
+      <p className="lede">
+        {candidates.length === 1
+          ? 'One line in your manuscript is'
+          : `${candidates.length} lines in your manuscript are`}{' '}
+        centered by hand with tabs or spaces — often that's how a chapter
+        title gets typed. Tell us which ones really are titles, and we'll
+        turn them into proper chapter headings for you.
+      </p>
+      <div className="card review-card">
+        <p className="review-progress soft">
+          {index + 1} of {candidates.length}
+        </p>
+        <div className="review-excerpt" aria-label="Excerpt from your manuscript">
+          {current.before && <p className="review-context">{current.before}</p>}
+          <p className="review-candidate">{current.text}</p>
+          {current.after && <p className="review-context">{current.after}</p>}
+        </div>
+        <p className="review-question">Is this a chapter title?</p>
+        <div className="review-actions">
+          <button className="download-button" disabled={busy} onClick={() => answer(true)}>
+            Yes, it's a chapter title
+          </button>
+          <button className="ghost-button" disabled={busy} onClick={() => answer(false)}>
+            No, it's just text
+          </button>
+        </div>
+        <p className="review-bulk soft">
+          {index > 0 && (
+            <>
+              <button className="link-button" disabled={busy} onClick={() => setIndex(index - 1)}>
+                ← Back
+              </button>
+              {' · '}
+            </>
+          )}
+          {remaining > 1 && (
+            <>
+              In a hurry?{' '}
+              <button className="link-button" disabled={busy} onClick={() => answerRest(true)}>
+                {index === 0 ? 'They all are' : 'The rest all are'}
+              </button>
+              {' · '}
+              <button className="link-button" disabled={busy} onClick={() => answerRest(false)}>
+                {index === 0 ? 'None of them are' : 'None of the rest are'}
+              </button>
+            </>
+          )}
+        </p>
+      </div>
+      <p className="privacy">
+        Nothing is saved while you decide — if you change your mind, just
+        start over and drop the file in again.
       </p>
     </main>
   );

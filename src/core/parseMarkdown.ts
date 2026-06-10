@@ -3,13 +3,10 @@ import remarkParse from 'remark-parse';
 import remarkFrontmatter from 'remark-frontmatter';
 import { parse as parseYaml } from 'yaml';
 import type { Root, RootContent, PhrasingContent, Paragraph } from 'mdast';
-import type { Block, Book, BookMetadata, Chapter, Run } from './model';
+import { SCENE_BREAK_RE, type Block, type Book, type BookMetadata, type Chapter, type Run } from './model';
 import { outlineToChapters, type OutlineItem } from './chapterize';
 
 const processor = unified().use(remarkParse).use(remarkFrontmatter, ['yaml']);
-
-/** Paragraphs that are really scene-break markers writers type by hand. */
-const SCENE_BREAK_RE = /^\s*(?:#|\*\s*\*\s*\*|\* \* \*|~+|·+)\s*$/;
 
 interface NamedFile {
   name: string;

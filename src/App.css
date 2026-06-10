@@ -116,6 +116,79 @@ h2 {
   text-align: left;
 }
 
+/* ---- title review ---- */
+
+.review {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.review-progress {
+  margin: 0 0 0.75rem;
+}
+
+.review-excerpt {
+  background: var(--page);
+  color: var(--page-ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  font-family: 'Times New Roman', Times, serif;
+}
+
+.review-context {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.45;
+}
+
+.review-candidate {
+  text-align: center;
+  font-size: 1.1rem;
+  margin: 1rem 0;
+}
+.review-context + .review-candidate {
+  margin-top: 1.25rem;
+}
+
+.review-question {
+  font-weight: 600;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.review-actions .download-button {
+  margin-top: 0;
+}
+
+.ghost-button {
+  font: inherit;
+  font-size: 1.05rem;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.85rem 1.25rem;
+  cursor: pointer;
+  color: var(--ink);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.ghost-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.review-bulk {
+  margin: 1rem 0 0;
+}
+
+.review .privacy {
+  text-align: center;
+}
+
 /* ---- book screen ---- */
 
 .card {
