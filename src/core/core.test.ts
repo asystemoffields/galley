@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Packer } from 'docx';
 import JSZip from 'jszip';
 import { parseMarkdown } from './parseMarkdown';
-import { parseDocx, htmlToParas } from './parseDocx';
+import { parseDocx, htmlToParas, isChapterLine } from './parseDocx';
 import { emitDocx } from './emitDocx';
 import { emitEpub } from './emitEpub';
 import { manuscriptWordCount, wordCount, type Book } from './model';
@@ -62,6 +62,29 @@ describe('parseMarkdown', () => {
     expect(italicRun?.text).toBe('letter');
   });
 
+  it('treats a lone top-level heading as the book title, not a chapter', () => {
+    const book = parseMarkdown([
+      {
+        name: 'b.md',
+        content:
+          '# My Great Novel\n\n## Chapter One\n\nFirst text.\n\n## Chapter Two\n\nSecond text.\n',
+      },
+    ]);
+    expect(book.metadata.title).toBe('My Great Novel');
+    expect(book.chapters.map((c) => c.title)).toEqual(['Chapter One', 'Chapter Two']);
+  });
+
+  it('reads a line of tildes as a scene break, not a code fence', () => {
+    const book = parseMarkdown([
+      { name: 'b.md', content: 'Before the break.\n\n~~~\n\nAfter, this text must survive.\n' },
+    ]);
+    expect(book.chapters[0].blocks.map((b) => b.kind)).toEqual([
+      'paragraph',
+      'scene-break',
+      'paragraph',
+    ]);
+  });
+
   it('treats multiple files as chapters sorted naturally', () => {
     const book = parseMarkdown([
       { name: '10-the-end.md', content: 'Last words.' },
@@ -105,6 +128,8 @@ describe('emitDocx', () => {
     expect(doc).toContain('END');
     const styles = await zip.file('word/styles.xml')!.async('string');
     expect(styles).toContain('Times New Roman');
+    // US Letter, not the library's A4 default.
+    expect(doc).toMatch(/<w:pgSz w:w="12240" w:h="15840"/);
     const header = await Promise.all(
       Object.keys(zip.files)
         .filter((f) => /word\/header\d*\.xml/.test(f))
@@ -163,6 +188,32 @@ describe('parseDocx', () => {
     expect(paras[0].heading).toBe(1);
     expect(paras[1].runs.find((r) => r.italic)?.text).toBe('slanted');
     expect(paras[1].runs.find((r) => r.bold)?.text).toBe('heavy');
+  });
+
+  it('recognizes real chapter lines without sentence false-positives', () => {
+    for (const yes of [
+      'Chapter Twelve',
+      'CHAPTER 3',
+      'Chapter XII',
+      'chapter twenty-one',
+      'Part Two',
+      'BOOK I',
+      'Prologue',
+      'Epilogue',
+      'PART TWO: THE RECKONING',
+      'Chapter One — The Storm',
+    ]) {
+      expect(isChapterLine(yes), yes).toBe(true);
+    }
+    for (const no of [
+      'Part of me wanted to die.',
+      'Book clubs were her nightmare.',
+      'Epilogue came too soon for her liking.',
+      'Chapter One was the hardest to write.',
+      'It was over.',
+    ]) {
+      expect(isChapterLine(no), no).toBe(false);
+    }
   });
 
   it('round-trips a manuscript docx through mammoth', async () => {

@@ -287,10 +287,10 @@ function BookScreen({ book, onChange }: { book: Book; onChange: (b: Book) => voi
                 const f = e.target.files?.[0];
                 if (!f) return;
                 const mime = f.type === 'image/png' ? 'image/png' : 'image/jpeg';
-                setCover({
-                  data: await f.arrayBuffer(),
-                  mime,
-                  previewUrl: URL.createObjectURL(f),
+                const data = await f.arrayBuffer();
+                setCover((prev) => {
+                  if (prev) URL.revokeObjectURL(prev.previewUrl);
+                  return { data, mime, previewUrl: URL.createObjectURL(f) };
                 });
               }}
             />

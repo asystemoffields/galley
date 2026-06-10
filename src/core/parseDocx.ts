@@ -3,13 +3,26 @@ import type { Block, Book, Chapter, Run } from './model';
 
 const SCENE_BREAK_RE = /^\s*(?:#|\*\s*\*\s*\*|\* \* \*|~+|·+)\s*$/;
 
+const NUM_WORD =
+  'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred';
+const CHAPTER_NUM = String.raw`(?:\d{1,4}|[ivxlcdm]{1,8}|(?:${NUM_WORD})(?:[-\s](?:${NUM_WORD}))*)`;
+const CHAPTER_LINE_RE = new RegExp(
+  String.raw`^(?:(?:chapter|part|book)\s+${CHAPTER_NUM}|prologue|epilogue|interlude|foreword|preface|afterword|coda)(?:\s*[—–:.-]\s*[\w][\w\s.,:'’-]{0,38})?$`,
+  'i',
+);
+
 /**
- * A standalone short line like "Chapter Twelve", "PART TWO", "Prologue".
- * Only used as a chapter boundary when the document has no real heading
- * styles, so a sentence mentioning a chapter can't false-positive.
+ * A standalone line like "Chapter Twelve", "PART TWO: THE RECKONING",
+ * "Prologue". Only used as a chapter boundary when the document has no
+ * real heading styles. Deliberately strict: "chapter/part/book" must be
+ * followed by a number (digits, roman, or spelled out), and a subtitle
+ * needs a separator — so narrative sentences like "Part of me wanted to
+ * die." or "Book clubs were her nightmare." can't false-positive.
  */
-const CHAPTER_LINE_RE =
-  /^\s*(chapter|part|book|prologue|epilogue|interlude)\b[\s\w.:'’-]{0,40}$/i;
+export function isChapterLine(text: string): boolean {
+  const t = text.trim().replace(/[\s.!?:]+$/, '');
+  return t.length <= 48 && CHAPTER_LINE_RE.test(t);
+}
 
 interface FlatPara {
   heading: number | null; // 1–6 for headings, null for body text
@@ -42,8 +55,7 @@ function chapterize(paras: FlatPara[]): Chapter[] {
 
   const isBoundary = (p: FlatPara): boolean => {
     if (splitDepth !== null) return p.heading === splitDepth;
-    const text = runText(p.runs).trim();
-    return CHAPTER_LINE_RE.test(text) && text.length <= 48;
+    return isChapterLine(runText(p.runs));
   };
 
   const chapters: Chapter[] = [];

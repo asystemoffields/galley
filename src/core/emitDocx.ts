@@ -103,6 +103,9 @@ export function emitDocx(book: Book, options: DocxOptions = {}): Document {
       {
         properties: {
           page: {
+            // US Letter — the docx library defaults to A4, but standard
+            // manuscript format is a US convention.
+            size: { width: 8.5 * TWIPS_PER_INCH, height: 11 * TWIPS_PER_INCH },
             margin: {
               top: TWIPS_PER_INCH,
               bottom: TWIPS_PER_INCH,

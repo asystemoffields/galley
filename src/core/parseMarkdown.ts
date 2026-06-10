@@ -32,9 +32,12 @@ export function parseMarkdown(files: NamedFile[]): Book {
   const metadata: Partial<BookMetadata> = {};
 
   if (files.length === 1) {
-    const tree = processor.parse(files[0].content) as Root;
+    const tree = processor.parse(neutralizeTildeFences(files[0].content)) as Root;
     collectFrontmatter(tree, metadata);
-    const chapters = splitIntoChapters(tree.children);
+    const nodes = [...tree.children];
+    const docTitle = takeDocumentTitle(nodes);
+    if (docTitle !== null) metadata.title ??= docTitle;
+    const chapters = splitIntoChapters(nodes);
     return finishBook(metadata, chapters, files[0].name);
   }
 
@@ -43,7 +46,7 @@ export function parseMarkdown(files: NamedFile[]): Book {
   );
   const chapters: Chapter[] = [];
   for (const file of sorted) {
-    const tree = processor.parse(file.content) as Root;
+    const tree = processor.parse(neutralizeTildeFences(file.content)) as Root;
     collectFrontmatter(tree, metadata);
     const fileChapters = splitIntoChapters(tree.children);
     if (fileChapters.length === 1 && !fileChapters[0].title) {
@@ -71,6 +74,38 @@ function finishBook(
     },
     chapters,
   };
+}
+
+/**
+ * A line of tildes is a scene break to a writer, but a (usually unclosed)
+ * code fence to CommonMark — which would silently swallow the rest of the
+ * file. Manuscripts don't contain code fences, so rewrite tilde-only lines
+ * into thematic breaks before parsing.
+ */
+function neutralizeTildeFences(content: string): string {
+  return content.replace(/^[ \t]{0,3}~{3,}[ \t]*$/gm, '* * *');
+}
+
+/**
+ * Writers often put the book title as a lone top-level heading above
+ * deeper chapter headings (`# My Novel` then `## Chapter One`). If the
+ * shallowest heading level occurs exactly once, opens the document, and
+ * deeper headings exist, treat it as the title — not a chapter boundary
+ * that would swallow the whole book into one chapter. Removes the heading
+ * from `nodes` and returns its text, or null if the shape doesn't match.
+ */
+function takeDocumentTitle(nodes: RootContent[]): string | null {
+  const headings = nodes.filter(
+    (n): n is Heading => n.type === 'heading' && phrasingToText(n.children) !== '',
+  );
+  if (headings.length < 2) return null;
+  const depths = headings.map((h) => h.depth);
+  const minDepth = Math.min(...depths);
+  if (depths.filter((d) => d === minDepth).length !== 1) return null;
+  const first = nodes.find((n) => n.type !== 'yaml');
+  if (first !== headings[0] || headings[0].depth !== minDepth) return null;
+  nodes.splice(nodes.indexOf(first), 1);
+  return phrasingToText(headings[0].children);
 }
 
 function titleFromFilename(name: string): string {
