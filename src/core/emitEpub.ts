@@ -80,6 +80,11 @@ export function emitEpub(book: Book, options: EpubOptions = {}): JSZip {
 
 export function escapeXml(text: string): string {
   return text
+    // Drop characters XML 1.0 forbids even when escaped (C0 controls other
+    // than tab/newline/return). A stray one from a pasted title would make
+    // strict EPUB validators and some readers reject the whole document.
+    // eslint-disable-next-line no-control-regex -- stripping these is the point
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

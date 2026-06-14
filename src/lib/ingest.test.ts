@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ingestFiles } from './ingest';
+import { ingestFiles, IngestError } from './ingest';
 
 const CENTERED_TXT = [
   '\t\tOne',
@@ -42,5 +42,11 @@ describe('ingestFiles', () => {
     const { book, candidates } = await ingestFiles([file]);
     expect(candidates).toEqual([]);
     expect(book.chapters.map((c) => c.title)).toEqual(['One']);
+  });
+
+  it('refuses a mix of Word and text files rather than silently dropping one', async () => {
+    const docx = new File(['x'], 'book.docx');
+    const md = new File(['# One\n\nText.\n'], 'notes.md');
+    await expect(ingestFiles([docx, md])).rejects.toBeInstanceOf(IngestError);
   });
 });

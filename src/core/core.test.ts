@@ -12,7 +12,7 @@ import {
   headingDepths,
 } from './detectCentered';
 import { emitDocx } from './emitDocx';
-import { emitEpub } from './emitEpub';
+import { emitEpub, escapeXml } from './emitEpub';
 import { manuscriptWordCount, wordCount, type Book } from './model';
 
 const SAMPLE_MD = `---
@@ -134,6 +134,30 @@ describe('parseMarkdown', () => {
     expect(book.chapters.every((c) => c.part === undefined)).toBe(true);
   });
 
+  it('does not read a subhead-per-chapter book (e.g. a diary) as parts', () => {
+    const book = parseMarkdown([
+      {
+        name: 'b.md',
+        content: [
+          '# Chapter One',
+          '',
+          '## June 1st',
+          '',
+          'Dear diary, text one.',
+          '',
+          '# Chapter Two',
+          '',
+          '## June 2nd',
+          '',
+          'Dear diary, text two.',
+        ].join('\n'),
+      },
+    ]);
+    // The # lines are the chapters; the ## dates stay as in-chapter subheads.
+    expect(book.chapters.map((c) => c.title)).toEqual(['Chapter One', 'Chapter Two']);
+    expect(book.chapters.every((c) => c.part === undefined)).toBe(true);
+  });
+
   it('reads a multi-chapter file under one top heading as a named part', () => {
     const book = parseMarkdown([
       { name: '1-first.md', content: '# Dawn\n\n## Chapter One\n\nA.\n\n## Chapter Two\n\nB.\n' },
@@ -154,6 +178,32 @@ describe('parseMarkdown', () => {
       { name: '1-beginning.md', content: 'First words.' },
     ]);
     expect(book.chapters.map((c) => c.title)).toEqual(['beginning', 'middle', 'the end']);
+  });
+
+  const paraText = (md: string) =>
+    parseMarkdown([{ name: 'x.md', content: md }])
+      .chapters.flatMap((c) => c.blocks)
+      .map((b) => (b.kind === 'paragraph' ? b.runs.map((r) => r.text).join('') : ''))
+      .join('\n');
+
+  it('drops inline HTML comments instead of leaking them as visible text', () => {
+    expect(paraText('Visible. <!-- secret author note --> Still visible.\n')).toBe(
+      'Visible.  Still visible.',
+    );
+  });
+
+  it('drops stray inline tags but keeps their text content', () => {
+    expect(paraText('A <span class="x">styled</span> word.\n')).toBe('A styled word.');
+  });
+
+  it('reads an inline <br> as a space, not literal text', () => {
+    expect(paraText('She paused.<br>Then left.\n')).toBe('She paused. Then left.');
+  });
+
+  it('keeps the text of a reference-style link', () => {
+    expect(paraText('See [the docs][1] now.\n\n[1]: https://example.com\n')).toBe(
+      'See the docs now.',
+    );
   });
 });
 
@@ -429,6 +479,12 @@ describe('emitEpub', () => {
     const opf = await zip.file('OEBPS/package.opf')!.async('string');
     expect(opf).toContain('Salt &amp; &lt;Iron&gt;');
   });
+
+  it('strips XML-illegal control characters but keeps tab/newline', () => {
+    // A NUL, vertical tab and form-feed are forbidden in XML 1.0 even escaped.
+    expect(escapeXml('A\x00B\x0BC\x0C')).toBe('ABC');
+    expect(escapeXml('keep\tthese\nand\r')).toBe('keep\tthese\nand\r');
+  });
 });
 
 describe('parseDocx', () => {
@@ -463,6 +519,12 @@ describe('parseDocx', () => {
       'Epilogue came too soon for her liking.',
       'Chapter One was the hardest to write.',
       'It was over.',
+      // Real words made only of roman-numeral letters must not pass as numbers.
+      'Chapter mid',
+      'Chapter did',
+      'Chapter dim',
+      'Book mill',
+      'Part lid',
     ]) {
       expect(isChapterLine(no), no).toBe(false);
     }

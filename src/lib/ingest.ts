@@ -46,6 +46,12 @@ export async function ingestFiles(
   const markdownFiles = files.filter((f) => MARKDOWN_EXT.test(f.name));
   const docxFiles = files.filter((f) => DOCX_EXT.test(f.name));
 
+  if (docxFiles.length > 0 && markdownFiles.length > 0) {
+    throw new IngestError(
+      'You dropped a mix of Word and text files. Galley formats one book at a time — drop just your .docx, or just your Markdown/text files.',
+    );
+  }
+
   if (docxFiles.length > 0) {
     if (docxFiles.length > 1) {
       throw new IngestError(

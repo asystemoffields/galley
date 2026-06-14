@@ -5,7 +5,11 @@ import { depthForPromotion } from './detectCentered';
 
 const NUM_WORD =
   'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred';
-const CHAPTER_NUM = String.raw`(?:\d{1,4}|[ivxlcdm]{1,8}|(?:${NUM_WORD})(?:[-\s](?:${NUM_WORD}))*)`;
+// A well-formed roman numeral (the lookahead just forces it non-empty), so
+// real words made only of roman letters — "mid", "did", "mill", "lid" —
+// don't read as "Chapter <number>".
+const ROMAN = String.raw`(?=[ivxlcdm])m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})`;
+const CHAPTER_NUM = String.raw`(?:\d{1,4}|${ROMAN}|(?:${NUM_WORD})(?:[-\s](?:${NUM_WORD}))*)`;
 const CHAPTER_LINE_RE = new RegExp(
   String.raw`^(?:(?:chapter|part|book)\s+${CHAPTER_NUM}|prologue|epilogue|interlude|foreword|preface|afterword|coda)(?:\s*[—–:.-]\s*[\w][\w\s.,:'’-]{0,38})?$`,
   'i',

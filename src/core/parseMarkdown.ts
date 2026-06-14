@@ -203,15 +203,23 @@ function walkPhrasing(
         out.push({ text: ' ', italic: style.italic, bold: style.bold });
         break;
       case 'link':
+      case 'linkReference':
       case 'delete':
         walkPhrasing(node.children, style, out);
         break;
       case 'image':
         break;
-      default:
-        if ('value' in node && typeof node.value === 'string') {
-          out.push({ text: node.value, italic: style.italic, bold: style.bold });
+      case 'html':
+        // Inline raw HTML. A <br> is a line break (treat it like a hard
+        // break); anything else — stray tags, author notes like
+        // <!-- ... --> — is dropped rather than leaked into the prose as
+        // literal text. (Block-level HTML is already dropped in nodeToBlocks.)
+        if (/^<br\s*\/?>$/i.test(node.value.trim())) {
+          out.push({ text: ' ', italic: style.italic, bold: style.bold });
         }
+        break;
+      default:
+        break;
     }
   }
 }

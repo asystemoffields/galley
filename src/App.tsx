@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import type { Book } from './core';
 import { blockText, manuscriptWordCount, wordCount } from './core';
@@ -257,6 +257,12 @@ function TitleReviewScreen({
 function BookScreen({ book, onChange }: { book: Book; onChange: (b: Book) => void }) {
   const [underlineItalics, setUnderlineItalics] = useState(false);
   const [cover, setCover] = useState<Cover | null>(null);
+  // Free the preview blob URL when the cover changes or the screen unmounts
+  // (e.g. "Start over"), so picking covers doesn't leak object URLs.
+  useEffect(() => {
+    if (!cover) return;
+    return () => URL.revokeObjectURL(cover.previewUrl);
+  }, [cover]);
   const meta = book.metadata;
   const exact = useMemo(() => wordCount(book), [book]);
   const rounded = useMemo(() => manuscriptWordCount(book), [book]);
@@ -417,10 +423,8 @@ function BookScreen({ book, onChange }: { book: Book; onChange: (b: Book) => voi
                 if (!f) return;
                 const mime = f.type === 'image/png' ? 'image/png' : 'image/jpeg';
                 const data = await f.arrayBuffer();
-                setCover((prev) => {
-                  if (prev) URL.revokeObjectURL(prev.previewUrl);
-                  return { data, mime, previewUrl: URL.createObjectURL(f) };
-                });
+                // The previous cover's URL is revoked by the effect cleanup above.
+                setCover({ data, mime, previewUrl: URL.createObjectURL(f) });
               }}
             />
           </label>

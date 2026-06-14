@@ -92,27 +92,37 @@ export function outlineToChapters(
   return { title, chapters: chapters.length ? chapters : [{ title: '', blocks: [] }] };
 }
 
-/** Does every section opened by a `partDepth` heading contain a deeper heading? */
+/**
+ * Are these two heading levels shaped like parts-containing-chapters?
+ * Every section opened by a `partDepth` heading must contain at least one
+ * `chapterDepth` heading, and at least one section must contain two or
+ * more — otherwise a book that simply opens every chapter with a single
+ * subhead (a diary's dates, a thriller's locations) would be misread as
+ * parts, turning its chapters into part titles and its subheads into the
+ * chapters.
+ */
 function isPartShaped(items: OutlineItem[], partDepth: number, chapterDepth: number): boolean {
   let sections = 0;
   let sectionsWithChapters = 0;
+  let maxChaptersInSection = 0;
   let open = false;
-  let sawChapter = false;
+  let chaptersHere = 0;
   const close = () => {
     if (!open) return;
     sections += 1;
-    if (sawChapter) sectionsWithChapters += 1;
+    if (chaptersHere > 0) sectionsWithChapters += 1;
+    maxChaptersInSection = Math.max(maxChaptersInSection, chaptersHere);
   };
   for (const item of items) {
     if (item.kind !== 'heading') continue;
     if (item.depth === partDepth) {
       close();
       open = true;
-      sawChapter = false;
+      chaptersHere = 0;
     } else if (open && item.depth === chapterDepth) {
-      sawChapter = true;
+      chaptersHere += 1;
     }
   }
   close();
-  return sections >= 2 && sectionsWithChapters === sections;
+  return sections >= 2 && sectionsWithChapters === sections && maxChaptersInSection >= 2;
 }
